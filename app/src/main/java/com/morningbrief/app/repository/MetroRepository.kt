@@ -256,31 +256,18 @@ class MetroRepository {
         return "1號月台 ($mainlineDirection • 於 $transferStation 轉乘)"
     }
 
+    private val tdxRepository = com.morningbrief.app.repository.tdx.TdxRepository()
+
     /**
      * Station Info: Dynamic Origin -> Dynamic Destination
+     * Priority: Fetches real official timetable from TDX API if Client ID/Secret configured.
+     * Fallback: High-precision aligned timetable calculation if offline or unconfigured.
      */
-    fun getUpcomingShifts(
+    suspend fun getUpcomingShifts(
         origin: String = "三民高中",
         destination: String = "南勢角",
         count: Int = 4
     ): List<MetroShift> {
-        val nowMillis = System.currentTimeMillis()
-        val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
-        val currentHour = nowCal.get(Calendar.HOUR_OF_DAY)
-        val currentMinute = nowCal.get(Calendar.MINUTE)
-        val currentSecond = nowCal.get(Calendar.SECOND)
-
-        // Taipei Metro Operating hours: 06:00 ~ 24:00 (00:00 ~ 06:00 is closed)
-        val isOperating = currentHour in 6..23
-
-        val isPeakHour = (currentHour in 7..9) || (currentHour in 17..19)
-        val headwayMinutes = when {
-            !isOperating -> 6
-            isPeakHour -> 4
-            currentHour == 23 -> 8
-            else -> 6
-        }
-
         val originClean = origin.removeSuffix("站").trim()
         val destClean = destination.removeSuffix("站").trim()
 
@@ -312,6 +299,93 @@ class MetroRepository {
         }
 
         val platform = computePlatformDirection(originStation, destStation)
+
+        // 1. Try real TDX API timetable if credentials configured
+        try {
+            val realShifts = tdxRepository.getRealUpcomingShifts(
+                originStation = originStation,
+                destStation = destStation,
+                travelTimeMinutes = travelTimeMinutes,
+                lineColorHex = lineColorHex,
+                platformDesc = platform,
+                count = count
+            )
+            if (!realShifts.isNullOrEmpty()) {
+                return realShifts
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MetroRepository", "TDX fetch fallback: ${e.message}")
+        }
+
+        // 2. Fallback to precise local timetable
+        return computeLocalUpcomingShifts(originStation, destStation, travelTimeMinutes, lineColorHex, platform, count)
+    }
+
+    fun getLocalUpcomingShifts(
+        origin: String = "三民高中",
+        destination: String = "南勢角",
+        count: Int = 4
+    ): List<MetroShift> {
+        val originClean = origin.removeSuffix("站").trim()
+        val destClean = destination.removeSuffix("站").trim()
+
+        val originStation = allStations.find { it.name == originClean || it.name.contains(originClean) || originClean.contains(it.name) }
+            ?: allStations.first { it.name == "三民高中" }
+
+        val destStation = allStations.find { it.name == destClean || it.name.contains(destClean) || destClean.contains(it.name) }
+
+        val travelTimeMinutes = if (originStation.name == destStation?.name) {
+            0
+        } else if (originStation.name == "三民高中" && destStation != null) {
+            destStation.travelTimeFromO19
+        } else if (destStation != null) {
+            val dist = calculateDistanceKm(originStation.latitude, originStation.longitude, destStation.latitude, destStation.longitude)
+            val isTransfer = originStation.line != destStation.line
+            val est = (dist * 2.2).toInt() + (if (isTransfer) 5 else 0)
+            maxOf(3, est)
+        } else {
+            20
+        }
+
+        val lineColorHex = when {
+            originStation.line.contains("松山新店") -> "#10B981"
+            originStation.line.contains("淡水信義") -> "#EF4444"
+            originStation.line.contains("板南") -> "#2563EB"
+            originStation.line.contains("文湖") -> "#8B5CF6"
+            originStation.line.contains("環狀") -> "#EAB308"
+            else -> "#F8961E"
+        }
+
+        val platform = computePlatformDirection(originStation, destStation)
+        return computeLocalUpcomingShifts(originStation, destStation, travelTimeMinutes, lineColorHex, platform, count)
+    }
+
+    private fun computeLocalUpcomingShifts(
+        originStation: MrtStation,
+        destStation: MrtStation?,
+        travelTimeMinutes: Int,
+        lineColorHex: String,
+        platform: String,
+        count: Int
+    ): List<MetroShift> {
+        val nowMillis = System.currentTimeMillis()
+        val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val currentHour = nowCal.get(Calendar.HOUR_OF_DAY)
+        val currentMinute = nowCal.get(Calendar.MINUTE)
+        val currentSecond = nowCal.get(Calendar.SECOND)
+
+        // Taipei Metro Operating hours: 06:00 ~ 24:00 (00:00 ~ 06:00 is closed)
+        val isOperating = currentHour in 6..23
+
+        val isPeakHour = (currentHour in 7..9) || (currentHour in 17..19)
+        val headwayMinutes = when {
+            !isOperating -> 6
+            isPeakHour -> 4
+            currentHour == 23 -> 8
+            else -> 6
+        }
+
+        val destClean = destStation?.name?.removeSuffix("站")?.trim() ?: "南勢角"
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val shifts = mutableListOf<MetroShift>()
 
@@ -389,7 +463,6 @@ class MetroRepository {
             val departureStr = timeFormat.format(Date(departureMillis))
 
             val diffMillis = departureMillis - nowMillis
-            // If diffMillis is within boarding window (<= 40s), train is departing now (0 min)
             val minsUntil = if (diffMillis <= 40_000L) {
                 0
             } else {
@@ -429,14 +502,14 @@ class MetroRepository {
         return shifts
     }
 
-    fun getUpcomingShiftsForDestination(
+    suspend fun getUpcomingShiftsForDestination(
         destination: String = "南勢角",
         count: Int = 4
     ): List<MetroShift> {
         return getUpcomingShifts("三民高中", destination, count)
     }
 
-    fun getUpcomingShiftsForNanshijiao(count: Int = 4): List<MetroShift> {
+    suspend fun getUpcomingShiftsForNanshijiao(count: Int = 4): List<MetroShift> {
         return getUpcomingShiftsForDestination("南勢角", count)
     }
 

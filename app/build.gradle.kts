@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,6 +19,17 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Load TDX Credentials from local.properties
+        val properties = Properties()
+        val localPropertiesFile = project.rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(FileInputStream(localPropertiesFile))
+        }
+        val tdxClientId = properties.getProperty("TDX_CLIENT_ID") ?: ""
+        val tdxClientSecret = properties.getProperty("TDX_CLIENT_SECRET") ?: ""
+        buildConfigField("String", "TDX_CLIENT_ID", "\"$tdxClientId\"")
+        buildConfigField("String", "TDX_CLIENT_SECRET", "\"$tdxClientSecret\"")
     }
 
     buildTypes {
@@ -36,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -193,14 +193,18 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun selectMetroOrigin(origin: String) {
-        val destination = _uiState.value.selectedMetroDestination
-        val shifts = metroRepository.getUpcomingShifts(origin, destination, count = 4)
         _uiState.update {
             it.copy(
                 selectedMetroOrigin = origin,
-                metroShifts = shifts,
                 hasUserSelectedOrigin = true
             )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val destination = _uiState.value.selectedMetroDestination
+            val shifts = metroRepository.getUpcomingShifts(origin, destination, count = 4)
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(metroShifts = shifts) }
+            }
         }
     }
 
@@ -227,14 +231,18 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun selectMetroDestination(destination: String) {
-        val origin = _uiState.value.selectedMetroOrigin
-        val shifts = metroRepository.getUpcomingShifts(origin, destination, count = 4)
         _uiState.update {
             it.copy(
                 selectedMetroDestination = destination,
-                metroShifts = shifts,
                 hasUserSelectedDestination = true
             )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val origin = _uiState.value.selectedMetroOrigin
+            val shifts = metroRepository.getUpcomingShifts(origin, destination, count = 4)
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(metroShifts = shifts) }
+            }
         }
     }
 
@@ -306,14 +314,16 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
     private fun startMetroTimer() {
         viewModelScope.launch {
             while (true) {
-                delay(30_000) // Auto-refresh Metro countdowns every 30 seconds
+                delay(60_000) // Auto-refresh Metro countdowns every 60 seconds (1 min) to conserve API usage
                 val origin = _uiState.value.selectedMetroOrigin
                 val destination = if (!_uiState.value.hasUserSelectedDestination) {
                     computeNextUpcomingDestination(_uiState.value.todayEvents)
                 } else {
                     _uiState.value.selectedMetroDestination
                 }
-                val shifts = metroRepository.getUpcomingShifts(origin, destination, count = 4)
+                val shifts = withContext(Dispatchers.IO) {
+                    metroRepository.getUpcomingShifts(origin, destination, count = 4)
+                }
                 _uiState.update {
                     it.copy(
                         selectedMetroDestination = destination,
