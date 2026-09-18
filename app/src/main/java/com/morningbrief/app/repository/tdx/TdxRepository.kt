@@ -161,17 +161,38 @@ class TdxRepository {
             } else {
                 null
             }
-        }.sortedBy { it.second }.take(count)
+        }.sortedBy { it.second }.toMutableList()
 
-        if (upcomingEntries.isEmpty()) {
+        // If near end of day (e.g. late night) and remaining trains < count, wrap around to next morning trains
+        if (upcomingEntries.size < count && matchingTable.timetables.isNotEmpty()) {
+            val morningEntries = matchingTable.timetables.mapNotNull { entry ->
+                val parts = entry.departureTime.split(":")
+                val hour = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                val minute = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                val depCal = Calendar.getInstance().apply {
+                    timeInMillis = nowMillis
+                    add(Calendar.DAY_OF_YEAR, 1)
+                    set(Calendar.HOUR_OF_DAY, hour)
+                    set(Calendar.MINUTE, minute)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                Pair(entry, depCal.timeInMillis)
+            }.sortedBy { it.second }
+            upcomingEntries.addAll(morningEntries.take(count - upcomingEntries.size))
+        }
+
+        val finalEntries = upcomingEntries.take(count)
+
+        if (finalEntries.isEmpty()) {
             return null
         }
 
         val shifts = mutableListOf<MetroShift>()
         val destStationName = if (destClean.endsWith("站")) destClean else "${destClean}站"
 
-        for (i in upcomingEntries.indices) {
-            val (entry, depEpoch) = upcomingEntries[i]
+        for (i in finalEntries.indices) {
+            val (entry, depEpoch) = finalEntries[i]
             val diffMillis = depEpoch - nowMillis
             val minsUntil = if (diffMillis <= 40_000L) 0 else maxOf(1, ((diffMillis + 20_000L) / 60_000L).toInt())
 
