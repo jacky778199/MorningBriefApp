@@ -374,16 +374,18 @@ class MetroRepository {
         val currentMinute = nowCal.get(Calendar.MINUTE)
         val currentSecond = nowCal.get(Calendar.SECOND)
 
-        // Taipei Metro Operating hours: 06:00 ~ 24:00 (00:00 ~ 06:00 is closed)
-        val isOperating = currentHour in 6..23
-
         val isPeakHour = (currentHour in 7..9) || (currentHour in 17..19)
         val headwayMinutes = when {
-            !isOperating -> 6
             isPeakHour -> 4
             currentHour == 23 -> 8
             else -> 6
         }
+
+        // Real station timing offset (e.g. Sanmin Senior High School first train is 06:02, offset = 2)
+        val stationOffset = (originStation.travelTimeFromO19 + 2) % headwayMinutes
+
+        // Taipei Metro Operating hours: 06:00 ~ 24:00 (with last train around 00:03)
+        val isOperating = (currentHour in 6..23) || (currentHour == 0 && currentMinute <= stationOffset + 1)
 
         val destClean = destStation?.name?.removeSuffix("站")?.trim() ?: "南勢角"
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -397,13 +399,13 @@ class MetroRepository {
         }
 
         if (!isOperating) {
-            // First morning train at 06:00
+            // First morning train at 06:00 + stationOffset (e.g. 06:02 for Sanmin High School)
             val morningCal = (baseCal.clone() as Calendar).apply {
                 if (currentHour >= 6) {
                     add(Calendar.DAY_OF_YEAR, 1)
                 }
                 set(Calendar.HOUR_OF_DAY, 6)
-                set(Calendar.MINUTE, 0)
+                set(Calendar.MINUTE, stationOffset)
             }
 
             for (i in 0 until count) {
@@ -443,8 +445,9 @@ class MetroRepository {
             return shifts
         }
 
-        // Active Operating hours
-        val slotMinute = (currentMinute / headwayMinutes) * headwayMinutes
+        // Active Operating hours with station offset
+        val baseMinute = currentMinute - stationOffset
+        val slotMinute = ((baseMinute + headwayMinutes * 60) / headwayMinutes) * headwayMinutes + stationOffset
         val elapsedSecondsSinceSlot = (currentMinute - slotMinute) * 60 + currentSecond
 
         // If current train just arrived (within boarding window < 40 seconds), it is still boarding at platform
