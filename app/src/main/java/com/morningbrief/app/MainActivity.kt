@@ -82,6 +82,8 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         onRefresh = { viewModel.loadData() },
+                        hiddenEventIds = uiState.hiddenEventIds,
+                        onToggleHideEvent = { viewModel.toggleHideEvent(it) },
                         onUpdateLocation = { eventId, newLocation ->
                             viewModel.updateEventLocation(eventId, newLocation)
                         },
@@ -109,6 +111,8 @@ fun MorningBriefScreen(
     onToggleDarkMode: () -> Unit,
     onRequestCalendarPermission: () -> Unit,
     onRefresh: () -> Unit,
+    hiddenEventIds: Set<Long> = emptySet(),
+    onToggleHideEvent: (Long) -> Unit = {},
     onUpdateLocation: (Long, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -122,9 +126,10 @@ fun MorningBriefScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Morning Brief Greeting Header with Dark Mode Toggle
+        val activeAgendaCount = agendaEvents.count { it.id !in hiddenEventIds }
         HeaderCard(
             dateString = dateString,
-            agendaCount = agendaEvents.size,
+            agendaCount = activeAgendaCount,
             nextMetroMins = metroShifts.firstOrNull()?.minutesUntilDeparture,
             isDarkMode = isDarkMode,
             onToggleDarkMode = onToggleDarkMode,
@@ -148,6 +153,8 @@ fun MorningBriefScreen(
             events = agendaEvents,
             hasCalendarPermission = hasCalendarPermission,
             onRequestPermission = onRequestCalendarPermission,
+            hiddenEventIds = hiddenEventIds,
+            onToggleHideEvent = onToggleHideEvent,
             onUpdateLocation = onUpdateLocation
         )
 

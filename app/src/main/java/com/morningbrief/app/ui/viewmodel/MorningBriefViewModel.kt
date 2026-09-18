@@ -17,6 +17,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import android.content.Context
+import android.content.res.Configuration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.morningbrief.app.repository.MrtStation
@@ -33,7 +35,8 @@ data class MorningBriefUiState(
     val hasCalendarPermission: Boolean = false,
     val hasLocationPermission: Boolean = false,
     val isRefreshing: Boolean = false,
-    val isDarkMode: Boolean = false
+    val isDarkMode: Boolean = false,
+    val hiddenEventIds: Set<Long> = emptySet()
 )
 
 class MorningBriefViewModel(application: Application) : AndroidViewModel(application) {
@@ -94,9 +97,39 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    private val settingsPrefs = application.getSharedPreferences("morning_brief_settings_pref", Context.MODE_PRIVATE)
+
+    private val initialDarkMode: Boolean
+        get() {
+            return try {
+                if (settingsPrefs.contains("dark_mode")) {
+                    settingsPrefs.getBoolean("dark_mode", false)
+                } else {
+                    val app = getApplication<Application>()
+                    val uiMode = app.resources?.configuration?.uiMode ?: Configuration.UI_MODE_NIGHT_NO
+                    (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                }
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+    private val initialHiddenIds: Set<Long>
+        get() {
+            return try {
+                settingsPrefs.getStringSet("hidden_event_ids", emptySet())
+                    ?.mapNotNull { it.toLongOrNull() }
+                    ?.toSet() ?: emptySet()
+            } catch (e: Exception) {
+                emptySet()
+            }
+        }
+
     private val _uiState = MutableStateFlow(
         MorningBriefUiState(
-            availableMetroStations = metroRepository.allStations
+            availableMetroStations = metroRepository.allStations,
+            isDarkMode = initialDarkMode,
+            hiddenEventIds = initialHiddenIds
         )
     )
     val uiState: StateFlow<MorningBriefUiState> = _uiState.asStateFlow()
@@ -113,11 +146,14 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
     }
 
     /**
-     * Requirement 3: 依照現在時間最接近的下一個要去的行程 的目的地最近的捷運站
+     * Requirement 3: 依照現在時間最接近的下一個要去的行程 的目的地最近的捷運站 (可排除忽略行程)
      */
-    fun computeNextUpcomingDestination(events: List<CalendarEvent>): String {
+    fun computeNextUpcomingDestination(
+        events: List<CalendarEvent>,
+        hiddenIds: Set<Long> = _uiState.value.hiddenEventIds
+    ): String {
         val now = System.currentTimeMillis()
-        val eventsWithLoc = events.filter { it.hasLocation }
+        val eventsWithLoc = events.filter { it.hasLocation && it.id !in hiddenIds }
         if (eventsWithLoc.isEmpty()) return "南勢角"
 
         // 1) Find the next upcoming event (event end time has not passed yet)
@@ -171,7 +207,7 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
 
             // Requirement 3: Destination station defaults to next upcoming event's nearest metro station
             val currentDestination = if (!_uiState.value.hasUserSelectedDestination) {
-                computeNextUpcomingDestination(evs)
+                computeNextUpcomingDestination(evs, _uiState.value.hiddenEventIds)
             } else {
                 _uiState.value.selectedMetroDestination
             }
@@ -349,6 +385,46 @@ class MorningBriefViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun toggleDarkMode() {
-        _uiState.update { it.copy(isDarkMode = !it.isDarkMode) }
+        val newMode = !_uiState.value.isDarkMode
+        settingsPrefs.edit().putBoolean("dark_mode", newMode).apply()
+        _uiState.update { it.copy(isDarkMode = newMode) }
+    }
+
+    fun toggleHideEvent(eventId: Long) {
+        val currentHidden = _uiState.value.hiddenEventIds.toMutableSet()
+        if (currentHidden.contains(eventId)) {
+            currentHidden.remove(eventId)
+        } else {
+            currentHidden.add(eventId)
+        }
+
+        try {
+            settingsPrefs.edit().putStringSet("hidden_event_ids", currentHidden.map { it.toString() }.toSet()).apply()
+        } catch (e: Exception) {
+            // Ignore pref write error
+        }
+
+        val nextDestination = computeNextUpcomingDestination(_uiState.value.todayEvents, currentHidden)
+
+        _uiState.update {
+            it.copy(
+                hiddenEventIds = currentHidden,
+                selectedMetroDestination = nextDestination,
+                hasUserSelectedDestination = false
+            )
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val origin = _uiState.value.selectedMetroOrigin
+            val shifts = metroRepository.getUpcomingShifts(origin, nextDestination, count = 4)
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        metroShifts = shifts,
+                        selectedMetroDestination = nextDestination
+                    )
+                }
+            }
+        }
     }
 }

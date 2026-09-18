@@ -22,7 +22,8 @@ data class MetroShift(
     val etaTimeFormatted: String = "",
     val travelTimeMinutes: Int = 0,
     val headwayFromPreviousMinutes: Int = 6,
-    val isOperating: Boolean = true
+    val isOperating: Boolean = true,
+    val isRealTime: Boolean = false
 ) {
     val status: MetroShiftStatus
         get() = when {

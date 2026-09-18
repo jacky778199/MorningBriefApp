@@ -217,43 +217,27 @@ class MetroRepository {
     }
 
     private fun computePlatformDirection(origin: MrtStation, dest: MrtStation?): String {
-        if (dest == null) return "1號月台 (往 市中心方向)"
+        if (dest == null) return "往 市中心方向"
         if (origin.name == dest.name) return "已抵達該站"
 
-        val isSameLine = origin.line == dest.line ||
-            (origin.line.contains("中和新蘆") && dest.line.contains("中和新蘆")) ||
-            (origin.line.contains("淡水信義") && dest.line.contains("淡水信義")) ||
-            (origin.line.contains("松山新店") && dest.line.contains("松山新店")) ||
-            (origin.line.contains("板南") && dest.line.contains("板南")) ||
-            (origin.line.contains("文湖") && dest.line.contains("文湖"))
-
-        if (isSameLine) {
-            return "1號月台 (往 ${dest.name})"
-        }
-
-        // Transfer guidance
-        val transferStation = when {
-            origin.line.contains("中和新蘆") && dest.line.contains("淡水信義") -> "東門 / 民權西路"
-            origin.line.contains("中和新蘆") && dest.line.contains("板南") -> "忠孝新生"
-            origin.line.contains("中和新蘆") && dest.line.contains("松山新店") -> "松江南京 / 古亭"
-            origin.line.contains("中和新蘆") && dest.line.contains("文湖") -> "忠孝新生 / 松江南京"
-            origin.line.contains("板南") && dest.line.contains("淡水信義") -> "台北車站"
-            origin.line.contains("板南") && dest.line.contains("文湖") -> "忠孝復興"
-            origin.line.contains("淡水信義") && dest.line.contains("板南") -> "台北車站"
-            origin.line.contains("淡水信義") && dest.line.contains("松山新店") -> "中山 / 中正紀念堂"
-            else -> "主要轉乘站"
-        }
-
         val mainlineDirection = when {
-            origin.line.contains("中和新蘆") -> "往 南勢角"
+            origin.line.contains("中和新蘆") -> {
+                if (origin.latitude < dest.latitude) {
+                    val isLuzhouBranch = dest.name in listOf("蘆洲", "三民高中", "徐匯中學", "三和國中", "三重國小")
+                    if (isLuzhouBranch) "往 蘆洲" else "往 迴龍"
+                } else {
+                    "往 南勢角"
+                }
+            }
             origin.line.contains("淡水信義") -> if (origin.latitude > dest.latitude) "往 象山" else "往 淡水"
             origin.line.contains("板南") -> if (origin.longitude < dest.longitude) "往 南港展覽館" else "往 頂埔"
             origin.line.contains("松山新店") -> if (origin.longitude < dest.longitude) "往 松山" else "往 新店"
             origin.line.contains("文湖") -> if (origin.latitude < dest.latitude) "往 南港展覽館" else "往 動物園"
+            origin.line.contains("環狀") -> if (origin.latitude < dest.latitude) "往 新北產業園區" else "往 大坪林"
             else -> "往 ${dest.name}"
         }
 
-        return "1號月台 ($mainlineDirection • 於 $transferStation 轉乘)"
+        return mainlineDirection
     }
 
     private val tdxRepository = com.morningbrief.app.repository.tdx.TdxRepository()
@@ -437,7 +421,8 @@ class MetroRepository {
                         travelTimeMinutes = travelTimeMinutes,
                         etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘",
                         headwayFromPreviousMinutes = headwayMinutes,
-                        isOperating = false
+                        isOperating = false,
+                        isRealTime = false
                     )
                 )
                 morningCal.add(Calendar.MINUTE, headwayMinutes)
@@ -495,7 +480,8 @@ class MetroRepository {
                     travelTimeMinutes = travelTimeMinutes,
                     etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘",
                     headwayFromPreviousMinutes = headwayMinutes,
-                    isOperating = true
+                    isOperating = true,
+                    isRealTime = false
                 )
             )
 

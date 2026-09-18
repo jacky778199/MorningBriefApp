@@ -410,7 +410,7 @@ class CalendarRepository(private val context: Context) {
                 }
 
                 val first = addresses[0]
-                val isUnique = addresses.size == 1
+                val isUnique = addresses.size == 1 || cleanQuery.contains("號") || first.subThoroughfare != null
                 return LocationResolutionResult(
                     latitude = first.latitude,
                     longitude = first.longitude,

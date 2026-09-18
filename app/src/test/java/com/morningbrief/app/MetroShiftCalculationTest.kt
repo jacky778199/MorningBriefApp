@@ -35,6 +35,7 @@ class MetroShiftCalculationTest {
     fun testPlatformDirectionFormat() = runBlocking {
         val shifts = metroRepository.getUpcomingShifts("三民高中", "台北101/世貿", count = 4)
         assertNotNull(shifts.first().platform)
-        assertTrue(shifts.first().platform.contains("月台"))
+        assertTrue(shifts.first().platform.startsWith("往"))
+        org.junit.Assert.assertFalse(shifts.first().platform.contains("月台"))
     }
 }

@@ -209,6 +209,9 @@ class TdxRepository {
             }
             val etaStr = timeFormat.format(Date(etaCal.timeInMillis))
 
+            val tdxTerminal = matchingTable.destinationStationName?.zhTw?.trim()
+            val cleanPlatform = if (!tdxTerminal.isNullOrBlank()) "往 $tdxTerminal" else platformDesc
+
             shifts.add(
                 MetroShift(
                     shiftId = "TDX_${originStation.code}_${depTimeStr}_$i",
@@ -220,13 +223,14 @@ class TdxRepository {
                     departureTimeFormatted = depTimeStr,
                     departureEpochMillis = depEpoch,
                     minutesUntilDeparture = minsUntil,
-                    platform = platformDesc,
+                    platform = cleanPlatform,
                     destinationStationName = destStationName,
                     etaTimeFormatted = etaStr,
                     travelTimeMinutes = travelTimeMinutes,
                     etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘",
                     headwayFromPreviousMinutes = headway,
-                    isOperating = true
+                    isOperating = true,
+                    isRealTime = true
                 )
             )
         }

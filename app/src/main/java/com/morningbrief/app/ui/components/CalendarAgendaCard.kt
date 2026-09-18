@@ -1,14 +1,14 @@
 package com.morningbrief.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EventNote
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,9 +25,15 @@ fun CalendarAgendaCard(
     events: List<CalendarEvent>,
     hasCalendarPermission: Boolean,
     onRequestPermission: () -> Unit,
+    hiddenEventIds: Set<Long> = emptySet(),
+    onToggleHideEvent: (eventId: Long) -> Unit = {},
     onUpdateLocation: (eventId: Long, newLocation: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val (activeEvents, hiddenEvents) = remember(events, hiddenEventIds) {
+        events.partition { it.id !in hiddenEventIds }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -51,7 +57,7 @@ fun CalendarAgendaCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.EventNote,
+                            imageVector = Icons.Default.CalendarToday,
                             contentDescription = "Calendar",
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
@@ -80,7 +86,7 @@ fun CalendarAgendaCard(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = "${events.size} Events",
+                        text = if (hiddenEvents.isNotEmpty()) "${activeEvents.size} Events (${hiddenEvents.size} 忽略)" else "${events.size} Events",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -125,7 +131,7 @@ fun CalendarAgendaCard(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            if (events.isEmpty()) {
+            if (activeEvents.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -133,13 +139,17 @@ fun CalendarAgendaCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No events scheduled for today. Have a peaceful day! ✨",
+                        text = if (events.isEmpty()) {
+                            "No events scheduled for today. Have a peaceful day! ✨"
+                        } else {
+                            "今日所有行程均已忽略。可於下方展開「還原」恢復計算 ✨"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             } else {
-                events.forEachIndexed { index, event ->
+                activeEvents.forEachIndexed { index, event ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -178,7 +188,7 @@ fun CalendarAgendaCard(
                                     .clip(CircleShape)
                                     .background(Color(android.graphics.Color.parseColor(event.colorHex)))
                             )
-                            if (index < events.size - 1) {
+                            if (index < activeEvents.size - 1) {
                                 Box(
                                     modifier = Modifier
                                         .width(2.dp)
@@ -197,12 +207,46 @@ fun CalendarAgendaCard(
                                 .weight(1f)
                                 .padding(bottom = 20.dp)
                         ) {
-                            Text(
-                                text = event.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = event.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onToggleHideEvent(event.id) },
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VisibilityOff,
+                                            contentDescription = "忽略此行程",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "忽略",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
 
                             if (!event.description.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -221,6 +265,94 @@ fun CalendarAgendaCard(
                                         onUpdateLocation(event.id, newLoc)
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Collapsible Hidden Events section
+            if (hiddenEvents.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                var isHiddenSectionExpanded by remember { mutableStateOf(false) }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { isHiddenSectionExpanded = !isHiddenSectionExpanded },
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "已忽略 ${hiddenEvents.size} 個行程 (不計入捷運導航)",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = if (isHiddenSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "展開/收合",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                if (isHiddenSectionExpanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        hiddenEvents.forEach { hiddenEvent ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = hiddenEvent.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "${hiddenEvent.startTime} - ${hiddenEvent.endTime}${if (hiddenEvent.location.isNotBlank()) " • ${hiddenEvent.location}" else ""}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { onToggleHideEvent(hiddenEvent.id) },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Visibility,
+                                            contentDescription = "還原",
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(text = "還原", fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
                     }

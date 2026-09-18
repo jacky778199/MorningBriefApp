@@ -30,4 +30,31 @@ class AddressNormalizationTest {
         assertEquals("台北市信義區信義路五段7號", repository.normalizeTaiwanAddress("台北市信義區信義路五段7號35樓 (Office)"))
         assertEquals("台北市南港區三重路66號", repository.normalizeTaiwanAddress("台北市南港區三重路66號3樓 (Meeting Room B)"))
     }
+
+    @Test
+    fun testLocationAmbiguityDetection() {
+        val eventExact1 = com.morningbrief.app.model.CalendarEvent(
+            id = 1, title = "Test", startTime = "09:00", endTime = "10:00",
+            startEpochMillis = 0, endEpochMillis = 0,
+            location = "台北市信義區信義路五段7號 35樓辦公室",
+            isLocationUnique = true
+        )
+        org.junit.Assert.assertFalse("Street address with house number should not be ambiguous", eventExact1.isLocationAmbiguous)
+
+        val eventExact2 = com.morningbrief.app.model.CalendarEvent(
+            id = 2, title = "Test", startTime = "09:00", endTime = "10:00",
+            startEpochMillis = 0, endEpochMillis = 0,
+            location = "新北市板橋區文化路一段100號 會議室",
+            isLocationUnique = true
+        )
+        org.junit.Assert.assertFalse("Street address with number should not be ambiguous", eventExact2.isLocationAmbiguous)
+
+        val eventVague = com.morningbrief.app.model.CalendarEvent(
+            id = 3, title = "Test", startTime = "09:00", endTime = "10:00",
+            startEpochMillis = 0, endEpochMillis = 0,
+            location = "辦公室",
+            isLocationUnique = true
+        )
+        org.junit.Assert.assertTrue("Pure vague keyword should be ambiguous", eventVague.isLocationAmbiguous)
+    }
 }

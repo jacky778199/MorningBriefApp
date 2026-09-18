@@ -26,13 +26,27 @@ data class CalendarEvent(
         get() {
             if (!isLocationUnique) return true
             if (location.isBlank()) return true
-            val lower = location.trim().lowercase(java.util.Locale.ROOT)
+            val trimmed = location.trim()
+
+            // If the address already contains an explicit street and house number (e.g. "xx路...號", "xx街...號"),
+            // Google Maps can pinpoint the exact building directly, so it is NOT ambiguous.
+            val hasStreetAndNumber = (trimmed.contains("路") || trimmed.contains("街") || trimmed.contains("大道") || trimmed.contains("段")) &&
+                    trimmed.contains("號")
+            if (hasStreetAndNumber) {
+                return false
+            }
+
+            val lower = trimmed.lowercase(java.util.Locale.ROOT)
             val vagueKeywords = listOf(
                 "office", "meeting room", "zoom", "teams", "google meet", "online", "tbd",
                 "conference room", "starbucks", "cafe", "coffee", "room",
                 "辦公室", "會議室", "線上", "待定", "咖啡廳", "路易莎", "星巴克", "遠端"
             )
-            return vagueKeywords.any { lower == it || lower.startsWith(it) || lower.endsWith(it) } || location.trim().length < 5
+
+            val isPurelyVague = vagueKeywords.any { lower == it }
+            val isShortGeneric = trimmed.length < 4 || (trimmed.length < 8 && vagueKeywords.any { lower.startsWith(it) || lower.endsWith(it) })
+
+            return isPurelyVague || isShortGeneric
         }
 
     /**

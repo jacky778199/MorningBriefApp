@@ -370,8 +370,9 @@ fun MetroDepartureCard(
                                     )
                                 }
                             }
+                            val timeRemark = if (!nextShift.isRealTime) " (計算)" else ""
                             Text(
-                                text = if (nextShift.isOperating) "Departure: ${nextShift.departureTimeFormatted}" else "首班車發車: 06:00 (營運時間 06:00-24:00)",
+                                text = if (nextShift.isOperating) "Departure: ${nextShift.departureTimeFormatted}$timeRemark" else "首班車發車: 06:00$timeRemark (營運時間 06:00-24:00)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -464,8 +465,9 @@ fun MetroDepartureCard(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
+                                    val shiftTimeText = if (!shift.isRealTime) "${shift.departureTimeFormatted} (計算)" else shift.departureTimeFormatted
                                     Text(
-                                        text = shift.departureTimeFormatted,
+                                        text = shiftTimeText,
                                         style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface
@@ -540,6 +542,16 @@ fun MetroDepartureCard(
                                 )
                             }
                         }
+                    }
+
+                    if (shifts.any { !it.isRealTime }) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "※ 備註「(計算)」代表使用站點時距演算法推算，非 TDX 官方即時時刻",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        )
                     }
                 }
             }

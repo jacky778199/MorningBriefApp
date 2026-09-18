@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Morning Brief Android System Architecture",
+    "output": "morning-brief-system.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:jacky778199/MorningBriefApp.git",
+      "link_mode": "local-only",
+      "revision": "9fe6313ca5a041abfd1afa0aa14511a05725cca2"
+    },
+    "viewBox": [1390, 850],
+    "views": [
+      { "id": "startup", "label": "App startup", "focus": ["user", "mainActivity", "viewModel", "uiState"], "note": "MainActivity requests permissions, renders Compose, and collects StateFlow." },
+      { "id": "calendar-location", "label": "Calendar and location", "focus": ["viewModel", "calendarRepo", "androidServices", "prefs"], "note": "Events and device location drive the morning commute defaults." },
+      { "id": "metro-data", "label": "Metro schedule", "focus": ["viewModel", "metroRepo", "tdxRepo", "tdxApi"], "note": "TDX timetables are preferred; local timetable logic is the fallback." },
+      { "id": "navigation", "label": "Maps integration", "focus": ["composeUi", "maps"], "note": "Location cards launch Google Maps and render static map previews." }
+    ]
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "Commuter", "sublabel": "Android user", "pos": [40, 330], "size": [130, 64] },
+    { "id": "mainActivity", "type": "frontend", "label": "MainActivity", "sublabel": "Permission launcher", "pos": [230, 330], "size": [155, 68], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/MainActivity.kt", "line": 26 }] },
+    { "id": "composeUi", "type": "frontend", "label": "Compose UI", "sublabel": "Header, Metro, Agenda, Location", "pos": [470, 445], "size": [185, 76], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/MainActivity.kt", "line": 99 }, { "path": "app/src/main/java/com/morningbrief/app/ui/components/VisualLocationCard.kt", "line": 25 }] },
+    { "id": "uiState", "type": "messagebus", "label": "MorningBriefUiState", "sublabel": "StateFlow", "pos": [470, 190], "size": [185, 66], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/ui/viewmodel/MorningBriefViewModel.kt", "line": 128 }] },
+    { "id": "viewModel", "type": "backend", "label": "MorningBriefViewModel", "sublabel": "Business logic + coroutines", "pos": [720, 330], "size": [190, 74], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/ui/viewmodel/MorningBriefViewModel.kt", "line": 42 }] },
+    { "id": "calendarRepo", "type": "backend", "label": "CalendarRepository", "sublabel": "Events, GPS, geocoding", "pos": [935, 120], "size": [190, 76], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/repository/CalendarRepository.kt", "line": 14 }] },
+    { "id": "metroRepo", "type": "backend", "label": "MetroRepository", "sublabel": "Station DB + departure logic", "pos": [935, 330], "size": [190, 76], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/repository/MetroRepository.kt", "line": 20 }] },
+    { "id": "tdxRepo", "type": "backend", "label": "TdxRepository", "sublabel": "OAuth token + timetable cache", "pos": [935, 545], "size": [190, 76], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/repository/tdx/TdxRepository.kt", "line": 17 }] },
+    { "id": "prefs", "type": "database", "label": "SharedPreferences", "sublabel": "Overrides and settings", "pos": [720, 545], "size": [190, 72], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/ui/viewmodel/MorningBriefViewModel.kt", "line": 46 }, { "path": "app/src/main/java/com/morningbrief/app/ui/viewmodel/MorningBriefViewModel.kt", "line": 100 }] },
+    { "id": "androidServices", "type": "external", "label": "Android platform", "sublabel": "Calendar, Location, Geocoder", "pos": [1160, 120], "size": [195, 82], "sources": [{ "path": "app/src/main/AndroidManifest.xml", "line": 6 }, { "path": "app/src/main/java/com/morningbrief/app/repository/CalendarRepository.kt", "line": 43 }] },
+    { "id": "maps", "type": "external", "label": "Maps services", "sublabel": "Navigation + static images", "pos": [230, 545], "size": [195, 78], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/ui/components/VisualLocationCard.kt", "line": 67 }, { "path": "app/src/main/java/com/morningbrief/app/model/CalendarEvent.kt", "line": 46 }] },
+    { "id": "tdxApi", "type": "external", "label": "TDX Transport API", "sublabel": "TRTC StationTimeTable", "pos": [1160, 545], "size": [195, 78], "sources": [{ "path": "app/src/main/java/com/morningbrief/app/repository/tdx/TdxApiService.kt", "line": 21 }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Android app process", "wraps": ["mainActivity", "composeUi", "uiState", "viewModel", "calendarRepo", "metroRepo", "tdxRepo", "prefs"], "pad": 24 },
+    { "kind": "security-group", "label": "Runtime permissions", "wraps": ["mainActivity", "calendarRepo", "androidServices"], "pad": 18 }
+  ],
+  "connections": [
+    { "id": "user-opens-app", "from": "user", "to": "mainActivity", "label": "open app", "variant": "emphasis", "labelDy": -34 },
+    { "id": "main-to-ui", "from": "mainActivity", "to": "composeUi" },
+    { "id": "ui-actions", "from": "composeUi", "to": "viewModel", "label": "user actions", "labelDy": 42 },
+    { "id": "state-updates", "from": "viewModel", "to": "uiState", "variant": "emphasis" },
+    { "id": "state-collect", "from": "uiState", "to": "composeUi" },
+    { "id": "persist-settings", "from": "viewModel", "to": "prefs" },
+    { "id": "load-calendar", "from": "viewModel", "to": "calendarRepo" },
+    { "id": "android-data", "from": "calendarRepo", "to": "androidServices", "label": "device data", "variant": "security", "labelDy": 62 },
+    { "id": "metro-query", "from": "viewModel", "to": "metroRepo" },
+    { "id": "tdx-fallback", "from": "metroRepo", "to": "tdxRepo" },
+    { "id": "tdx-api", "from": "tdxRepo", "to": "tdxApi", "label": "OAuth + timetable", "variant": "dashed", "labelDy": 64 },
+    { "id": "maps-intent", "from": "composeUi", "to": "maps", "label": "navigation + previews", "variant": "dashed", "labelAt": [448, 637] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "UI + state", "items": ["Jetpack Compose screens collect MorningBriefUiState", "User actions call MorningBriefViewModel methods"] },
+    { "dot": "emerald", "title": "Commute intelligence", "items": ["Calendar locations and current GPS choose default MRT endpoints", "MetroRepository computes upcoming departures and ETAs"] },
+    { "dot": "amber", "title": "External dependencies", "items": ["Android permissions gate local device data", "TDX is optional; app falls back to local timetable logic", "Maps services support location cards"] }
+  ]
+}
