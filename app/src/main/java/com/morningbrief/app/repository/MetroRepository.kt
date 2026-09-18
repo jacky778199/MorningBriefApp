@@ -216,6 +216,46 @@ class MetroRepository {
         return closestStation
     }
 
+    private fun computePlatformDirection(origin: MrtStation, dest: MrtStation?): String {
+        if (dest == null) return "1號月台 (往 市中心方向)"
+        if (origin.name == dest.name) return "已抵達該站"
+
+        val isSameLine = origin.line == dest.line ||
+            (origin.line.contains("中和新蘆") && dest.line.contains("中和新蘆")) ||
+            (origin.line.contains("淡水信義") && dest.line.contains("淡水信義")) ||
+            (origin.line.contains("松山新店") && dest.line.contains("松山新店")) ||
+            (origin.line.contains("板南") && dest.line.contains("板南")) ||
+            (origin.line.contains("文湖") && dest.line.contains("文湖"))
+
+        if (isSameLine) {
+            return "1號月台 (往 ${dest.name})"
+        }
+
+        // Transfer guidance
+        val transferStation = when {
+            origin.line.contains("中和新蘆") && dest.line.contains("淡水信義") -> "東門 / 民權西路"
+            origin.line.contains("中和新蘆") && dest.line.contains("板南") -> "忠孝新生"
+            origin.line.contains("中和新蘆") && dest.line.contains("松山新店") -> "松江南京 / 古亭"
+            origin.line.contains("中和新蘆") && dest.line.contains("文湖") -> "忠孝新生 / 松江南京"
+            origin.line.contains("板南") && dest.line.contains("淡水信義") -> "台北車站"
+            origin.line.contains("板南") && dest.line.contains("文湖") -> "忠孝復興"
+            origin.line.contains("淡水信義") && dest.line.contains("板南") -> "台北車站"
+            origin.line.contains("淡水信義") && dest.line.contains("松山新店") -> "中山 / 中正紀念堂"
+            else -> "主要轉乘站"
+        }
+
+        val mainlineDirection = when {
+            origin.line.contains("中和新蘆") -> "往 南勢角"
+            origin.line.contains("淡水信義") -> if (origin.latitude > dest.latitude) "往 象山" else "往 淡水"
+            origin.line.contains("板南") -> if (origin.longitude < dest.longitude) "往 南港展覽館" else "往 頂埔"
+            origin.line.contains("松山新店") -> if (origin.longitude < dest.longitude) "往 松山" else "往 新店"
+            origin.line.contains("文湖") -> if (origin.latitude < dest.latitude) "往 南港展覽館" else "往 動物園"
+            else -> "往 ${dest.name}"
+        }
+
+        return "1號月台 ($mainlineDirection • 於 $transferStation 轉乘)"
+    }
+
     /**
      * Station Info: Dynamic Origin -> Dynamic Destination
      */
@@ -224,26 +264,21 @@ class MetroRepository {
         destination: String = "南勢角",
         count: Int = 4
     ): List<MetroShift> {
-        val now = Calendar.getInstance()
-        val currentHour = now.get(Calendar.HOUR_OF_DAY)
-        val currentMinute = now.get(Calendar.MINUTE)
+        val nowMillis = System.currentTimeMillis()
+        val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val currentHour = nowCal.get(Calendar.HOUR_OF_DAY)
+        val currentMinute = nowCal.get(Calendar.MINUTE)
+        val currentSecond = nowCal.get(Calendar.SECOND)
+
+        // Taipei Metro Operating hours: 06:00 ~ 24:00 (00:00 ~ 06:00 is closed)
+        val isOperating = currentHour in 6..23
 
         val isPeakHour = (currentHour in 7..9) || (currentHour in 17..19)
         val headwayMinutes = when {
+            !isOperating -> 6
             isPeakHour -> 4
-            currentHour in 6..23 -> 6
-            else -> 10
-        }
-
-        val shifts = mutableListOf<MetroShift>()
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-
-        val remainder = currentMinute % headwayMinutes
-        var nextShiftDelay = headwayMinutes - remainder
-        if (nextShiftDelay == 0) nextShiftDelay = headwayMinutes
-
-        val runningCal = Calendar.getInstance().apply {
-            add(Calendar.MINUTE, nextShiftDelay)
+            currentHour == 23 -> 8
+            else -> 6
         }
 
         val originClean = origin.removeSuffix("站").trim()
@@ -276,15 +311,92 @@ class MetroRepository {
             else -> "#F8961E"
         }
 
-        val platform = "1號月台 (往 $destClean)"
+        val platform = computePlatformDirection(originStation, destStation)
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val shifts = mutableListOf<MetroShift>()
+
+        // Anchor seconds and milliseconds to 0 for exact schedule slot alignment
+        val baseCal = Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        if (!isOperating) {
+            // First morning train at 06:00
+            val morningCal = (baseCal.clone() as Calendar).apply {
+                if (currentHour >= 6) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+                set(Calendar.HOUR_OF_DAY, 6)
+                set(Calendar.MINUTE, 0)
+            }
+
+            for (i in 0 until count) {
+                val departureMillis = morningCal.timeInMillis
+                val departureStr = timeFormat.format(Date(departureMillis))
+                val diffMillis = departureMillis - nowMillis
+                val minsUntil = maxOf(0, ((diffMillis + 30_000L) / 60_000L).toInt())
+
+                val etaCal = (morningCal.clone() as Calendar).apply {
+                    add(Calendar.MINUTE, travelTimeMinutes)
+                }
+                val etaStr = timeFormat.format(Date(etaCal.timeInMillis))
+                val destStationName = if (destClean.endsWith("站")) destClean else "${destClean}站"
+
+                shifts.add(
+                    MetroShift(
+                        shiftId = "${originStation.code}_${destClean}_${departureStr}_$i",
+                        stationName = "${originStation.name}站",
+                        stationCode = originStation.code,
+                        lineName = originStation.line,
+                        lineColorHex = lineColorHex,
+                        destination = destClean,
+                        departureTimeFormatted = departureStr,
+                        departureEpochMillis = departureMillis,
+                        minutesUntilDeparture = minsUntil,
+                        platform = platform,
+                        destinationStationName = destStationName,
+                        etaTimeFormatted = etaStr,
+                        travelTimeMinutes = travelTimeMinutes,
+                        etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘",
+                        headwayFromPreviousMinutes = headwayMinutes,
+                        isOperating = false
+                    )
+                )
+                morningCal.add(Calendar.MINUTE, headwayMinutes)
+            }
+            return shifts
+        }
+
+        // Active Operating hours
+        val slotMinute = (currentMinute / headwayMinutes) * headwayMinutes
+        val elapsedSecondsSinceSlot = (currentMinute - slotMinute) * 60 + currentSecond
+
+        // If current train just arrived (within boarding window < 40 seconds), it is still boarding at platform
+        val minutesToFirstShift = if (elapsedSecondsSinceSlot < 40) {
+            slotMinute - currentMinute
+        } else {
+            (slotMinute + headwayMinutes) - currentMinute
+        }
+
+        val runningCal = (baseCal.clone() as Calendar).apply {
+            add(Calendar.MINUTE, minutesToFirstShift)
+        }
 
         for (i in 0 until count) {
             val departureMillis = runningCal.timeInMillis
             val departureStr = timeFormat.format(Date(departureMillis))
-            val minsUntil = ((departureMillis - System.currentTimeMillis()) / (1000 * 60)).toInt()
 
-            val etaCal = Calendar.getInstance().apply {
-                timeInMillis = departureMillis
+            val diffMillis = departureMillis - nowMillis
+            // If diffMillis is within boarding window (<= 40s), train is departing now (0 min)
+            val minsUntil = if (diffMillis <= 40_000L) {
+                0
+            } else {
+                maxOf(1, ((diffMillis + 20_000L) / 60_000L).toInt())
+            }
+
+            val etaCal = (runningCal.clone() as Calendar).apply {
                 add(Calendar.MINUTE, travelTimeMinutes)
             }
             val etaStr = timeFormat.format(Date(etaCal.timeInMillis))
@@ -300,12 +412,14 @@ class MetroRepository {
                     destination = destClean,
                     departureTimeFormatted = departureStr,
                     departureEpochMillis = departureMillis,
-                    minutesUntilDeparture = maxOf(0, minsUntil),
+                    minutesUntilDeparture = minsUntil,
                     platform = platform,
                     destinationStationName = destStationName,
                     etaTimeFormatted = etaStr,
                     travelTimeMinutes = travelTimeMinutes,
-                    etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘"
+                    etaToDestinationFormatted = "$destStationName ETA $etaStr 約 $travelTimeMinutes 分鐘",
+                    headwayFromPreviousMinutes = headwayMinutes,
+                    isOperating = true
                 )
             )
 

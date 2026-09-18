@@ -317,10 +317,11 @@ fun MetroDepartureCard(
                 val nextShift = shifts.first()
 
                 // Primary Next Shift Countdown Banner
-                val bannerBgColor = when (nextShift.status) {
-                    MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626).copy(alpha = 0.12f)
-                    MetroShiftStatus.APPROACHING -> Color(0xFFD97706).copy(alpha = 0.12f)
-                    MetroShiftStatus.ON_SCHEDULE -> Color(0xFF16A34A).copy(alpha = 0.12f)
+                val bannerBgColor = when {
+                    !nextShift.isOperating -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    nextShift.status == MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626).copy(alpha = 0.12f)
+                    nextShift.status == MetroShiftStatus.APPROACHING -> Color(0xFFD97706).copy(alpha = 0.12f)
+                    else -> Color(0xFF16A34A).copy(alpha = 0.12f)
                 }
 
                 Surface(
@@ -337,23 +338,28 @@ fun MetroDepartureCard(
                     ) {
                         Column {
                             Text(
-                                text = "Next Train Shift (${nextShift.stationName})",
+                                text = if (nextShift.isOperating) "Next Train Shift (${nextShift.stationName})" else "夜間收班中 (${nextShift.stationName})",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
-                                    text = if (nextShift.minutesUntilDeparture == 0) "即將進站" else "${nextShift.minutesUntilDeparture}",
-                                    style = MaterialTheme.typography.displayMedium,
+                                    text = when {
+                                        !nextShift.isOperating -> "已收班"
+                                        nextShift.minutesUntilDeparture <= 0 -> "即將進站"
+                                        else -> "${nextShift.minutesUntilDeparture}"
+                                    },
+                                    style = if (!nextShift.isOperating) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.displayMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = when (nextShift.status) {
-                                        MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626)
-                                        MetroShiftStatus.APPROACHING -> Color(0xFFD97706)
-                                        MetroShiftStatus.ON_SCHEDULE -> Color(0xFF16A34A)
+                                    color = when {
+                                        !nextShift.isOperating -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        nextShift.status == MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626)
+                                        nextShift.status == MetroShiftStatus.APPROACHING -> Color(0xFFD97706)
+                                        else -> Color(0xFF16A34A)
                                     }
                                 )
-                                if (nextShift.minutesUntilDeparture > 0) {
+                                if (nextShift.isOperating && nextShift.minutesUntilDeparture > 0) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "mins",
@@ -365,7 +371,7 @@ fun MetroDepartureCard(
                                 }
                             }
                             Text(
-                                text = "Departure: ${nextShift.departureTimeFormatted}",
+                                text = if (nextShift.isOperating) "Departure: ${nextShift.departureTimeFormatted}" else "首班車發車: 06:00 (營運時間 06:00-24:00)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -373,18 +379,20 @@ fun MetroDepartureCard(
 
                         Column(horizontalAlignment = Alignment.End) {
                             Surface(
-                                color = when (nextShift.status) {
-                                    MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626)
-                                    MetroShiftStatus.APPROACHING -> Color(0xFFD97706)
-                                    MetroShiftStatus.ON_SCHEDULE -> Color(0xFF16A34A)
+                                color = when {
+                                    !nextShift.isOperating -> MaterialTheme.colorScheme.outline.copy(alpha = 0.8f)
+                                    nextShift.status == MetroShiftStatus.DEPARTING_SOON -> Color(0xFFDC2626)
+                                    nextShift.status == MetroShiftStatus.APPROACHING -> Color(0xFFD97706)
+                                    else -> Color(0xFF16A34A)
                                 },
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = when (nextShift.status) {
-                                        MetroShiftStatus.DEPARTING_SOON -> "即將進站"
-                                        MetroShiftStatus.APPROACHING -> "即將抵達"
-                                        MetroShiftStatus.ON_SCHEDULE -> "準點發車"
+                                    text = when {
+                                        !nextShift.isOperating -> "已收班"
+                                        nextShift.status == MetroShiftStatus.DEPARTING_SOON -> "即將進站"
+                                        nextShift.status == MetroShiftStatus.APPROACHING -> "即將抵達"
+                                        else -> "準點發車"
                                     },
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
@@ -442,7 +450,7 @@ fun MetroDepartureCard(
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                                 .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            // Row 1: Departure Time, Depart Station (xx), and "in xx mins" countdown
+                            // Row 1: Departure Time, Depart Station (xx), Headway Badge & Total Departure Countdown Badge
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -463,7 +471,7 @@ fun MetroDepartureCard(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    // User requirement 2: xx should be the depart station not destination
+                                    // Depart station name
                                     Text(
                                         text = "($departStationName)",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -472,19 +480,41 @@ fun MetroDepartureCard(
                                     )
                                 }
 
-                                // "in xx mins" - similar color with time (onSurface) but more obvious (bold badge with outline)
-                                Surface(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = if (shift.minutesUntilDeparture <= 0) "即將進站" else "${shift.minutesUntilDeparture} mins",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Headway Badge (班距)
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (shift.isOperating) "班距 ${shift.headwayFromPreviousMinutes}分" else "首班間隔",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    // Total Countdown Badge (距現在時間)
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                !shift.isOperating -> "06:00 發車"
+                                                shift.minutesUntilDeparture <= 0 -> "即將進站"
+                                                else -> "${shift.minutesUntilDeparture} 分鐘後"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                                 }
                             }
 

@@ -20,10 +20,13 @@ data class MetroShift(
     val etaToDestinationFormatted: String = "",
     val destinationStationName: String = "",
     val etaTimeFormatted: String = "",
-    val travelTimeMinutes: Int = 0
+    val travelTimeMinutes: Int = 0,
+    val headwayFromPreviousMinutes: Int = 6,
+    val isOperating: Boolean = true
 ) {
     val status: MetroShiftStatus
         get() = when {
+            !isOperating -> MetroShiftStatus.ON_SCHEDULE
             minutesUntilDeparture <= 1 -> MetroShiftStatus.DEPARTING_SOON
             minutesUntilDeparture <= 4 -> MetroShiftStatus.APPROACHING
             else -> MetroShiftStatus.ON_SCHEDULE
@@ -31,6 +34,7 @@ data class MetroShift(
 
     val countdownDisplay: String
         get() = when {
+            !isOperating -> "已收班 (Closed)"
             minutesUntilDeparture <= 0 -> "即將進站 (Arriving)"
             minutesUntilDeparture == 1 -> "1 分鐘 (1 min)"
             else -> "$minutesUntilDeparture 分鐘 ($minutesUntilDeparture mins)"
